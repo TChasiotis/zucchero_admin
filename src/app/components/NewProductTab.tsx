@@ -14,14 +14,54 @@ import tw from "twrnc";
 
 interface Props {
   sortedCategories: any[];
+  menuItems: any[];
   usageStats: { commits: number; aiRequests: number };
   LIMITS: { commits: number; aiRequests: number };
   incrementAiUsage: () => Promise<void>;
   setPendingChanges: React.Dispatch<React.SetStateAction<Record<string, any>>>;
 }
 
+let cachedLatestFlashModel: string | null = null;
+
+const getDynamicFlashModel = async (apiKey: string) => {
+  if (cachedLatestFlashModel) return cachedLatestFlashModel;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+    );
+    const data = await response.json();
+
+    const flashModels = data.models.filter(
+      (m: any) =>
+        m.name.includes("flash") &&
+        !m.name.includes("preview") &&
+        !m.name.includes("tts") &&
+        !m.name.includes("vision") &&
+        m.supportedGenerationMethods.includes("generateContent"),
+    );
+
+    const latestModelName = flashModels[flashModels.length - 1].name.replace(
+      "models/",
+      "",
+    );
+
+    cachedLatestFlashModel = latestModelName;
+    console.log(
+      "Βρέθηκε δυναμικό μοντέλο AI (Σταθερό):",
+      cachedLatestFlashModel,
+    );
+
+    return cachedLatestFlashModel;
+  } catch (error) {
+    console.error("Σφάλμα δυναμικής εύρεσης, χρήση Fallback:", error);
+    return "gemini-2.5-flash";
+  }
+};
+
 export default function NewProductTab({
   sortedCategories,
+  menuItems,
   usageStats,
   LIMITS,
   incrementAiUsage,
@@ -30,12 +70,12 @@ export default function NewProductTab({
   const [newProductName, setNewProductName] = useState("");
   const [newProductDesc, setNewProductDesc] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductUnit, setNewProductUnit] = useState<string | null>(null); // Default null (Κομμάτι)
   const [newProductCategory, setNewProductCategory] = useState<string | null>(
     sortedCategories[0]?.id || null,
   );
   const [isLoading, setIsLoading] = useState(false);
 
-  // Εφαρμόσαμε το δικό σου όριο των 20 AI Requests
   const ACTIVE_LIMITS = { ...LIMITS, aiRequests: 20 };
 
   const generateFullProductData = async (
@@ -50,12 +90,19 @@ export default function NewProductTab({
     }
     try {
       setIsLoading(true);
-      const genAI = new GoogleGenerativeAI(
-        process.env.EXPO_PUBLIC_GEMINI_API_KEY || "",
-      );
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "";
 
-      const prompt = `Είσαι ένας κορυφαίος, εξειδικευμένος μεταφραστής καταλόγων εστιατορίων και μενού. Το σύστημά μας βασίζεται 100% σε εσένα για την απευθείας και αυτοματοποιημένη εισαγωγή των δεδομένων στη βάση (database), χωρίς κανέναν ανθρώπινο έλεγχο. Πρέπει να είσαι αλάνθαστος, απόλυτα ακριβής και να ακολουθήσεις τους παρακάτω κανόνες κατά γράμμα.
+      const dynamicModelName = await getDynamicFlashModel(apiKey);
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      const model = genAI.getGenerativeModel({
+        model: dynamicModelName || "gemini-2.5-flash",
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      });
+
+      const prompt = `Είσαι ένας κορυφαίος, εξειδικευμένος μεταφραστής καταλόγων εστιατορίων και μενού. Το σύστημά μας βασίζεται 100% σε εσένα για την απευθείας και αυτοματοποιημένη εισαγωγή των δεδομένων στη βάση (database), χωρίς κανέναν ανθρώπινη έλεγχο. Πρέπει να είσαι αλάνθαστος, απόλυτα ακριβής και να ακολουθήσεις τους παρακάτω κανόνες κατά γράμμα.
 
 ΣΟΥ ΔΙΝΟΝΤΑΙ ΤΑ ΕΞΗΣ ΕΛΛΗΝΙΚΑ ΔΕΔΟΜΕΝΑ (ΠΡΩΤΟΤΥΠΟ):
 Όνομα: "${greekName}"
@@ -76,10 +123,7 @@ export default function NewProductTab({
    - description: Πρέπει να μεταφραστεί στην εκάστοτε γλώσσα. ΕΙΔΙΚΗ ΟΔΗΓΙΑ: Εάν υπάρχει μια συγκεκριμένη, καθιερωμένη ή τοπική ονομασία για αυτό το προϊόν στην εκάστοτε γλώσσα, υποχρεούσαι να την τοποθετήσεις ΣΤΗΝ ΑΡΧΗ της περιγραφής.
 
 ΑΥΣΤΗΡΟΣ ΚΑΝΟΝΑΣ ΕΞΟΔΟΥ (CRITICAL JSON FORMATTING):
-- Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ ΚΑΙ ΜΟΝΟ ένα έγκυρο JSON αντικείμενο.
-- ΑΠΑΓΟΡΕΥΕΤΑΙ να γράψεις οποιοδήποτε άλλο κείμενο.
-- ΑΠΑΓΟΡΕΥΕΤΑΙ αυστηρά η χρήση Markdown format (ΜΗΝ βάλεις \`\`\`json στην αρχή ή \`\`\` στο τέλος).
-- Η μορφή πρέπει να είναι ακριβώς αυτή:
+- Η μορφή πρέπει να είναι ΑΚΡΙΒΩΣ αυτή (χωρίς κανένα άλλο σχόλιο):
 {
   "el": { "name": "...", "description": "..." },
   "en": { "name": "...", "description": "..." },
@@ -92,18 +136,25 @@ export default function NewProductTab({
 }`;
 
       const result = await model.generateContent(prompt);
-      const cleanJson = result.response
-        .text()
-        .replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+      const cleanJson = result.response.text();
       const translations = JSON.parse(cleanJson);
+
+      // ΥΠΟΛΟΓΙΣΜΟΣ ΜΕΓΙΣΤΟΥ SORT ORDER ΓΙΑ ΝΑ ΜΠΕΙ ΤΕΡΜΑ ΚΑΤΩ
+      const categoryItems = menuItems.filter(
+        (i) => i.categoryId === categoryId,
+      );
+      const maxSortOrder =
+        categoryItems.length > 0
+          ? Math.max(...categoryItems.map((i) => i.sortOrder || 0))
+          : -1;
 
       const newProduct = {
         id: `custom_${Date.now()}`,
         categoryId: categoryId,
         price: price,
+        unit: newProductUnit, // Αποθήκευση της επιλογής (null, kg, portion)
         translations: translations,
+        sortOrder: maxSortOrder + 1,
         isPopular: false,
         isVegan: false,
         isGlutenFree: false,
@@ -155,6 +206,7 @@ export default function NewProductTab({
       setNewProductName("");
       setNewProductDesc("");
       setNewProductPrice("");
+      setNewProductUnit(null); // Reset σε Κομμάτι
       Alert.alert(
         "Έτοιμο!",
         "Το προϊόν μεταφράστηκε τέλεια και μπήκε στο καλάθι αλλαγών. Πάτα 'Υποβολή' πάνω δεξιά!",
@@ -186,7 +238,6 @@ export default function NewProductTab({
           placeholder="π.χ. Τούρτα Φράουλα"
           value={newProductName}
           onChangeText={setNewProductName}
-          // Προσθέτουμε αυτό το style για να παρακάμψουμε το Tailwind αν χρειαστεί
           textAlignVertical="center"
         />
 
@@ -204,7 +255,7 @@ export default function NewProductTab({
           onChangeText={setNewProductDesc}
         />
 
-        <View style={tw`flex-row gap-8 mb-10`}>
+        <View style={tw`flex-row gap-8 mb-8`}>
           <View style={tw`w-1/3`}>
             <Text
               style={tw`text-lg font-bold text-slate-500 mb-3 uppercase tracking-wide`}
@@ -219,6 +270,45 @@ export default function NewProductTab({
               onChangeText={setNewProductPrice}
             />
           </View>
+        </View>
+
+        {/* --- ΝΕΟ: ΕΠΙΛΟΓΗ UNIT ΣΤΗ ΔΗΜΙΟΥΡΓΙΑ --- */}
+        <Text
+          style={tw`text-lg font-bold text-slate-500 mb-3 uppercase tracking-wide`}
+        >
+          Μονάδα Μέτρησης
+        </Text>
+        <View style={tw`flex-row gap-4 mb-8 max-w-md`}>
+          <TouchableOpacity
+            onPress={() => setNewProductUnit(null)}
+            style={tw`flex-1 py-4 rounded-2xl border-2 items-center ${newProductUnit === null ? "bg-indigo-50 border-indigo-500" : "bg-slate-50 border-slate-200"}`}
+          >
+            <Text
+              style={tw`font-black text-lg ${newProductUnit === null ? "text-indigo-700" : "text-slate-600"}`}
+            >
+              Κομμάτι
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setNewProductUnit("kg")}
+            style={tw`flex-1 py-4 rounded-2xl border-2 items-center ${newProductUnit === "kg" ? "bg-indigo-50 border-indigo-500" : "bg-slate-50 border-slate-200"}`}
+          >
+            <Text
+              style={tw`font-black text-lg ${newProductUnit === "kg" ? "text-indigo-700" : "text-slate-600"}`}
+            >
+              Κιλό
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setNewProductUnit("portion")}
+            style={tw`flex-1 py-4 rounded-2xl border-2 items-center ${newProductUnit === "portion" ? "bg-indigo-50 border-indigo-500" : "bg-slate-50 border-slate-200"}`}
+          >
+            <Text
+              style={tw`font-black text-lg ${newProductUnit === "portion" ? "text-indigo-700" : "text-slate-600"}`}
+            >
+              Μερίδα
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <Text
