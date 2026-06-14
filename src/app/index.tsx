@@ -14,7 +14,6 @@ import {
 } from "react-native";
 import tw from "twrnc";
 
-import BannersTab from "./components/BannersTab";
 import BoxesTab from "./components/BoxesTab";
 import CategoriesTab from "./components/CategoriesTab";
 import EditProductModal from "./components/EditProductModal";
@@ -25,7 +24,6 @@ const { width } = Dimensions.get("window");
 const DRAWER_WIDTH = 300;
 
 const ADMIN_TABS = [
-  { id: "banners", label: "Μπάνερ Διαφημίσεων", icon: "image" },
   { id: "categories", label: "Κατηγορίες", icon: "list" },
   { id: "products", label: "Προϊόντα", icon: "box" },
   { id: "new_product", label: "Νέο Προϊόν", icon: "plus-circle" },
@@ -36,7 +34,7 @@ export default function AdminDashboard() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
-  const [activeAdminTab, setActiveAdminTab] = useState(ADMIN_TABS[2].id);
+  const [activeAdminTab, setActiveAdminTab] = useState(ADMIN_TABS[1].id);
   const [categories, setCategories] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -154,13 +152,29 @@ export default function AdminDashboard() {
     const changes: Record<string, any> = {};
     const updatedMenu = menuItems.map((item) => {
       const indexInCat = catItems.findIndex((ci) => ci.id === item.id);
-      if (indexInCat !== -1 && item.sortOrder !== indexInCat) {
+
+      // Αν το προϊόν ανήκει στην κατηγορία που ταξινομούμε, το αναγκάζουμε να ανανεωθεί!
+      if (indexInCat !== -1) {
         changes[item.id] = {
-          ...(pendingChanges[item.id] || item),
           id: item.id,
-          sortOrder: indexInCat,
+          price: item.price,
+          isSoldOut: item.isSoldOut || false,
+          isPopular: item.isPopular || false,
+          isVegan: item.isVegan || false,
+          isGlutenFree: item.isGlutenFree || false,
+          hasEgg: item.hasEgg || false,
+          hasDairy: item.hasDairy || false,
+          hasNuts: item.hasNuts || false,
+          hasSoy: item.hasSoy || false,
+          ...pendingChanges[item.id], // Κρατάμε άλλες αλλαγές αν υπήρχαν
+          sortOrder: indexInCat, // Επιβολή της νέας σειράς (0, 1, 2...)
           isCategoryUpdate: false,
         };
+
+        if (item.translations) {
+          changes[item.id].translations = item.translations;
+        }
+
         return { ...item, sortOrder: indexInCat };
       }
       return item;
@@ -168,7 +182,7 @@ export default function AdminDashboard() {
 
     setMenuItems(updatedMenu);
     if (Object.keys(changes).length > 0) {
-      setPendingChanges((prev) => ({ ...prev, ...changes }));
+      setPendingChanges((prev) => ({ ...prev, ...changes })); // Τώρα το κουμπί θα ανάψει 100%
     }
   };
 
@@ -387,8 +401,53 @@ export default function AdminDashboard() {
     );
   };
 
+  // --- ΕΔΩ ΜΠΑΙΝΕΙ Η ΣΥΝΑΡΤΗΣΗ ΠΟΥ ΕΛΕΙΠΕ! ---
+  const handleBatchSubmit = async () => {
+    if (usageStats.commits >= LIMITS.commits) {
+      Alert.alert("Όριο Ημέρας", "Έφτασες το όριο!");
+      return;
+    }
+    const changesArray = Object.values(pendingChanges);
+    if (changesArray.length === 0) return;
+    Alert.alert("Επιβεβαίωση", "Υποβολή αλλαγών;", [
+      { text: "Ακύρωση", style: "cancel" },
+      {
+        text: "Υποβολή",
+        onPress: async () => {
+          try {
+            const response = await axios.post(
+              `${process.env.EXPO_PUBLIC_API_URL}/api/menu/update`,
+              changesArray,
+            );
+            if (response.data.success) {
+              alert("Επιτυχία!");
+              setPendingChanges({});
+              const newStats = {
+                ...usageStats,
+                commits: usageStats.commits + 1,
+              };
+              setUsageStats(newStats);
+              await AsyncStorage.setItem(
+                "admin_usage_stats",
+                JSON.stringify({
+                  ...newStats,
+                  date: new Date().toDateString(),
+                }),
+              );
+            }
+          } catch (e) {
+            alert("Σφάλμα δικτύου");
+          }
+        },
+      },
+    ]);
+  };
+  // ------------------------------------------
+
+  // Από εδώ και κάτω συνεχίζει κανονικά ο κώδικάς σου...
   const activeItems = getSortedActiveItems();
   const activeTabDetails = ADMIN_TABS.find((t) => t.id === activeAdminTab);
+
   const sortedCategories = [...categories].sort(
     (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0),
   );
@@ -492,7 +551,6 @@ export default function AdminDashboard() {
           />
         )}
 
-        {activeAdminTab === "banners" && <BannersTab />}
         {activeAdminTab === "boxes" && <BoxesTab />}
       </View>
 

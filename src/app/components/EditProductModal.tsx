@@ -22,8 +22,8 @@ interface Props {
   setTempDesc: (val: string) => void;
   tempPrice: string;
   setTempPrice: (val: string) => void;
-  tempUnit: string | null; // ΝΕΟ
-  setTempUnit: (val: string | null) => void; // ΝΕΟ
+  tempUnit: string | null;
+  setTempUnit: (val: string | null) => void;
   tempSoldOut: boolean;
   setTempSoldOut: (val: boolean) => void;
   tempPopular: boolean;
@@ -173,38 +173,59 @@ export default function EditProductModal({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={tw`p-6`}
             >
+              {/* ΟΝΟΜΑ (Με Κλείδωμα για Custom) */}
               {(isCustom || isExtraBlock) && (
                 <View style={tw`mb-6`}>
-                  <Text
-                    style={tw`text-sm font-bold text-slate-500 mb-2 uppercase tracking-wide`}
-                  >
-                    Όνομα (Ελληνικά)
-                  </Text>
+                  <View style={tw`flex-row items-center justify-between mb-2`}>
+                    <Text
+                      style={tw`text-sm font-bold text-slate-500 uppercase tracking-wide`}
+                    >
+                      Όνομα (Ελληνικά)
+                    </Text>
+                    {isCustom && (
+                      <Feather name="lock" size={14} color="#94a3b8" />
+                    )}
+                  </View>
                   <TextInput
-                    style={tw`bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 text-lg font-bold text-slate-800`}
+                    style={tw`border rounded-xl px-5 py-4 text-lg font-bold ${isCustom ? "bg-slate-100 border-slate-200 text-slate-500" : "bg-slate-50 border-slate-200 text-slate-800"}`}
                     value={tempName}
                     onChangeText={setTempName}
+                    editable={!isCustom}
                   />
                 </View>
               )}
 
+              {/* ΠΕΡΙΓΡΑΦΗ (Με Κλείδωμα για Custom) */}
               {(isCustom || isInfoBlock) && (
                 <View style={tw`mb-6`}>
-                  <Text
-                    style={tw`text-sm font-bold text-slate-500 mb-2 uppercase tracking-wide`}
-                  >
-                    Περιγραφή
-                  </Text>
+                  <View style={tw`flex-row items-center justify-between mb-2`}>
+                    <Text
+                      style={tw`text-sm font-bold text-slate-500 uppercase tracking-wide`}
+                    >
+                      Περιγραφή
+                    </Text>
+                    {isCustom && (
+                      <Feather name="lock" size={14} color="#94a3b8" />
+                    )}
+                  </View>
                   <TextInput
-                    style={tw`bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 text-base text-slate-800 min-h-[100px]`}
+                    style={tw`border rounded-xl px-5 py-4 text-base min-h-[100px] ${isCustom ? "bg-slate-100 border-slate-200 text-slate-500" : "bg-slate-50 border-slate-200 text-slate-800"}`}
                     multiline
                     textAlignVertical="top"
                     value={tempDesc}
                     onChangeText={setTempDesc}
+                    editable={!isCustom}
                   />
+                  {isCustom && (
+                    <Text style={tw`text-xs text-slate-400 mt-2 font-bold`}>
+                      * Για αλλαγή κειμένου, διαγράψτε το προϊόν και
+                      δημιουργήστε το ξανά.
+                    </Text>
+                  )}
                 </View>
               )}
 
+              {/* ΤΙΜΗ */}
               {!isHidePrice && (
                 <View style={tw`mb-6`}>
                   <Text
@@ -226,8 +247,8 @@ export default function EditProductModal({
                 </View>
               )}
 
-              {/* --- ΝΕΟ: ΕΠΙΛΟΓΗ ΜΟΝΑΔΑΣ ΜΕΤΡΗΣΗΣ (ΜΟΝΟ ΓΙΑ CUSTOM) --- */}
-              {isCustom && !isHidePrice && (
+              {/* --- ΜΟΝΑΔΑ ΜΕΤΡΗΣΗΣ (ΓΙΑ ΟΛΑ ΤΑ ΠΡΟΪΟΝΤΑ ΠΟΥ ΕΧΟΥΝ ΤΙΜΗ) --- */}
+              {!isHidePrice && (
                 <View style={tw`mb-6`}>
                   <Text
                     style={tw`text-sm font-bold text-slate-500 mb-2 uppercase tracking-wide`}
@@ -309,6 +330,7 @@ export default function EditProductModal({
                 )}
               </View>
 
+              {/* ΑΛΛΕΡΓΙΟΓΟΝΑ */}
               {!isHidePrice && (
                 <>
                   <View style={tw`h-px bg-slate-100 w-full mb-6`} />
@@ -362,7 +384,7 @@ export default function EditProductModal({
                 </>
               )}
 
-              {/* ΚΟΥΜΠΙ ΔΙΑΓΡΑΦΗΣ - ΛΕΙΤΟΥΡΓΕΙ ΚΑΝΟΝΙΚΑ ΤΩΡΑ */}
+              {/* ΚΟΥΜΠΙ ΔΙΑΓΡΑΦΗΣ (ΜΟΝΟ ΓΙΑ CUSTOM) */}
               {isCustom && (
                 <TouchableOpacity
                   onPress={onDeleteCustom}
