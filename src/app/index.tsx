@@ -1,3 +1,5 @@
+//npx eas build --platform android --profile preview για να φτιαχτει το apk preview
+
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
@@ -9,25 +11,28 @@ import {
   Dimensions,
   Pressable,
   Text,
+  TextInput, // <-- ΠΡΟΣΤΕΘΗΚΕ ΓΙΑ ΤΟ INPUT ΤΟΥ FEE
   TouchableOpacity,
   View,
 } from "react-native";
 import tw from "twrnc";
 
-import BoxesTab from "./components/BoxesTab";
 import CategoriesTab from "./components/CategoriesTab";
 import EditProductModal from "./components/EditProductModal";
 import NewProductTab from "./components/NewProductTab";
 import ProductsTab from "./components/ProductsTab";
+import StorageTab from "./components/StorageTab";
 
 const { width } = Dimensions.get("window");
 const DRAWER_WIDTH = 300;
 
+// ΠΡΟΣΤΕΘΗΚΕ ΤΟ ΝΕΟ TAB "ΡΥΘΜΙΣΕΙΣ" ΣΤΟ ΤΕΛΟΣ!
 const ADMIN_TABS = [
   { id: "categories", label: "Κατηγορίες", icon: "list" },
   { id: "products", label: "Προϊόντα", icon: "box" },
   { id: "new_product", label: "Νέο Προϊόν", icon: "plus-circle" },
-  { id: "boxes", label: "Αποθήκη Κουτιών", icon: "archive" },
+  { id: "storage", label: "Αποθήκη", icon: "archive" },
+  { id: "settings", label: "Ρυθμίσεις", icon: "settings" },
 ];
 
 export default function AdminDashboard() {
@@ -42,6 +47,9 @@ export default function AdminDashboard() {
     string | null
   >(null);
 
+  // STATE ΓΙΑ ΤΟ SERVICE FEE!
+  const [currentServiceFee, setCurrentServiceFee] = useState<string>("0.50");
+
   const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({});
 
   // --- STATES ΓΙΑ ΤΟ MODAL ---
@@ -50,7 +58,7 @@ export default function AdminDashboard() {
   const [tempName, setTempName] = useState("");
   const [tempDesc, setTempDesc] = useState("");
   const [tempPrice, setTempPrice] = useState("");
-  const [tempUnit, setTempUnit] = useState<string | null>(null); // ΝΕΟ
+  const [tempUnit, setTempUnit] = useState<string | null>(null);
   const [tempSoldOut, setTempSoldOut] = useState(false);
   const [tempPopular, setTempPopular] = useState(false);
   const [tempVegan, setTempVegan] = useState(false);
@@ -111,6 +119,12 @@ export default function AdminDashboard() {
       if (response.data.success) {
         setCategories(response.data.categories);
         setMenuItems(response.data.items);
+
+        // ΤΡΑΒΑΜΕ ΤΟ SERVICE FEE ΑΠΟ ΤΟ API ΠΟΥ ΦΤΙΑΞΑΜΕ!
+        if (response.data.serviceFee !== undefined) {
+          setCurrentServiceFee(response.data.serviceFee.toString());
+        }
+
         if (response.data.categories.length > 0)
           setSelectedFoodCategory(response.data.categories[0].id);
       }
@@ -118,6 +132,23 @@ export default function AdminDashboard() {
       alert("Αποτυχία σύνδεσης API!");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // HANDLER ΟΤΑΝ ΑΛΛΑΖΕΙ ΤΟ SERVICE FEE ΣΤΟ INPUT
+  const handleServiceFeeChange = (val: string) => {
+    setCurrentServiceFee(val);
+    const parsed = parseFloat(val.replace(",", "."));
+
+    if (!isNaN(parsed)) {
+      setPendingChanges((prev) => ({
+        ...prev,
+        // Δημιουργούμε ένα "εικονικό" id για τις αλλαγές
+        serviceFeeUpdate: {
+          isServiceFeeUpdate: true,
+          serviceFee: parsed,
+        },
+      }));
     }
   };
 
@@ -153,7 +184,6 @@ export default function AdminDashboard() {
     const updatedMenu = menuItems.map((item) => {
       const indexInCat = catItems.findIndex((ci) => ci.id === item.id);
 
-      // Αν το προϊόν ανήκει στην κατηγορία που ταξινομούμε, το αναγκάζουμε να ανανεωθεί!
       if (indexInCat !== -1) {
         changes[item.id] = {
           id: item.id,
@@ -166,8 +196,8 @@ export default function AdminDashboard() {
           hasDairy: item.hasDairy || false,
           hasNuts: item.hasNuts || false,
           hasSoy: item.hasSoy || false,
-          ...pendingChanges[item.id], // Κρατάμε άλλες αλλαγές αν υπήρχαν
-          sortOrder: indexInCat, // Επιβολή της νέας σειράς (0, 1, 2...)
+          ...pendingChanges[item.id],
+          sortOrder: indexInCat,
           isCategoryUpdate: false,
         };
 
@@ -182,7 +212,7 @@ export default function AdminDashboard() {
 
     setMenuItems(updatedMenu);
     if (Object.keys(changes).length > 0) {
-      setPendingChanges((prev) => ({ ...prev, ...changes })); // Τώρα το κουμπί θα ανάψει 100%
+      setPendingChanges((prev) => ({ ...prev, ...changes }));
     }
   };
 
@@ -291,7 +321,7 @@ export default function AdminDashboard() {
     setTempName(item.translations?.el?.name || "");
     setTempDesc(item.translations?.el?.description || "");
     setTempPrice(item.price ? item.price.toString() : "0");
-    setTempUnit(item.unit || null); // Φόρτωση του Unit από τη βάση
+    setTempUnit(item.unit || null);
     setTempSoldOut(item.isSoldOut || false);
     setTempPopular(item.isPopular || false);
 
@@ -325,7 +355,7 @@ export default function AdminDashboard() {
           ? {
               ...item,
               price: parseFloat(tempPrice) || 0,
-              unit: tempUnit, // Αποθήκευση Unit τοπικά
+              unit: tempUnit,
               isSoldOut: tempSoldOut,
               isPopular: tempPopular,
               isVegan: tempVegan,
@@ -349,7 +379,7 @@ export default function AdminDashboard() {
         ...prev[editingItem.id],
         id: editingItem.id,
         price: parseFloat(tempPrice) || 0,
-        unit: tempUnit, // Στέλνουμε το Unit στο API
+        unit: tempUnit,
         isSoldOut: tempSoldOut,
         isPopular: tempPopular,
         isVegan: tempVegan,
@@ -369,7 +399,6 @@ export default function AdminDashboard() {
     setIsEditModalVisible(false);
   };
 
-  // --- ΝΕΟ: ΛΟΓΙΚΗ ΓΙΑ ΤΟ ΚΟΥΜΠΙ ΤΟΥ ΚΑΔΟΥ (ΟΡΙΣΤΙΚΗ ΔΙΑΓΡΑΦΗ) ---
   const handleDeleteCustomItem = () => {
     if (!editingItem) return;
 
@@ -382,10 +411,7 @@ export default function AdminDashboard() {
           text: "Διαγραφή",
           style: "destructive",
           onPress: () => {
-            // Αφαίρεση από την οθόνη αμέσως
             setMenuItems(menuItems.filter((i) => i.id !== editingItem.id));
-
-            // Ενημέρωση pendingChanges με σημαία διαγραφής για το Drizzle API
             setPendingChanges((prev) => ({
               ...prev,
               [editingItem.id]: {
@@ -393,7 +419,6 @@ export default function AdminDashboard() {
                 isDeleted: true,
               },
             }));
-
             setIsEditModalVisible(false);
           },
         },
@@ -401,7 +426,6 @@ export default function AdminDashboard() {
     );
   };
 
-  // --- ΕΔΩ ΜΠΑΙΝΕΙ Η ΣΥΝΑΡΤΗΣΗ ΠΟΥ ΕΛΕΙΠΕ! ---
   const handleBatchSubmit = async () => {
     if (usageStats.commits >= LIMITS.commits) {
       Alert.alert("Όριο Ημέρας", "Έφτασες το όριο!");
@@ -442,9 +466,7 @@ export default function AdminDashboard() {
       },
     ]);
   };
-  // ------------------------------------------
 
-  // Από εδώ και κάτω συνεχίζει κανονικά ο κώδικάς σου...
   const activeItems = getSortedActiveItems();
   const activeTabDetails = ADMIN_TABS.find((t) => t.id === activeAdminTab);
 
@@ -551,7 +573,52 @@ export default function AdminDashboard() {
           />
         )}
 
-        {activeAdminTab === "boxes" && <BoxesTab />}
+        {activeAdminTab === "storage" && <StorageTab />}
+
+        {/* --- ΕΔΩ ΕΙΝΑΙ ΤΟ ΝΕΟ TAB ΓΙΑ ΤΙΣ ΡΥΘΜΙΣΕΙΣ (SERVICE FEE) --- */}
+        {activeAdminTab === "settings" && (
+          <View
+            style={tw`flex-1 p-6 bg-white rounded-2xl shadow-sm border border-slate-100`}
+          >
+            <Text style={tw`text-2xl font-black text-slate-800 mb-6`}>
+              Γενικές Ρυθμίσεις Καταστήματος
+            </Text>
+
+            <View
+              style={tw`p-6 bg-slate-50 rounded-xl border border-slate-200 w-full max-w-md`}
+            >
+              <Text style={tw`text-lg font-bold text-slate-700 mb-2`}>
+                Service Fee (Εξτρά χρέωση τραπεζιού ανά παραγγελία)
+              </Text>
+
+              <View
+                style={tw`flex-row items-center bg-white border border-slate-300 rounded-lg px-4 py-1`}
+              >
+                <Text style={tw`text-2xl font-black text-slate-400 mr-3`}>
+                  €
+                </Text>
+                <TextInput
+                  style={tw`flex-1 text-2xl font-bold text-slate-800 py-3`}
+                  value={currentServiceFee}
+                  onChangeText={handleServiceFeeChange}
+                  keyboardType="numeric"
+                  placeholder="0.50"
+                />
+              </View>
+
+              {pendingChanges["serviceFeeUpdate"] && (
+                <View
+                  style={tw`flex-row items-center gap-2 mt-4 bg-emerald-50 p-3 rounded-lg border border-emerald-200`}
+                >
+                  <Feather name="info" size={16} color="#059669" />
+                  <Text style={tw`text-emerald-700 font-bold flex-1`}>
+                    Αλλάξατε το Service Fee! Μην ξεχάσετε να πατήσετε "Υποβολή".
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
       </View>
 
       <EditProductModal
@@ -564,8 +631,8 @@ export default function AdminDashboard() {
         setTempDesc={setTempDesc}
         tempPrice={tempPrice}
         setTempPrice={setTempPrice}
-        tempUnit={tempUnit} // ΝΕΟ
-        setTempUnit={setTempUnit} // ΝΕΟ
+        tempUnit={tempUnit}
+        setTempUnit={setTempUnit}
         tempSoldOut={tempSoldOut}
         setTempSoldOut={setTempSoldOut}
         tempPopular={tempPopular}
@@ -583,7 +650,7 @@ export default function AdminDashboard() {
         tempSoy={tempSoy}
         setTempSoy={setTempSoy}
         saveLocalChanges={saveLocalChanges}
-        onDeleteCustom={handleDeleteCustomItem} // Σύνδεση κάδου διαγραφής
+        onDeleteCustom={handleDeleteCustomItem}
       />
 
       {isDrawerOpen && (
